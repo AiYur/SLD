@@ -5,3 +5,4 @@ A web app that identifies sugarcane leaf diseases from a photo. It runs **fully 
 ---
 
    ![Screenshot of my project](images/Screenshot1.png)
+   ![Screenshot of my project](images/Screenshot2.png)
