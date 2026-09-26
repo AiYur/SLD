@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sweet Diagnosis — Sugarcane Leaf Disease Detection</title>
+<!-- Everything is served from this computer. No CDN links, no web fonts,
+     no analytics — so the page works with the internet switched off. -->
+<link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M26 4C14 4 7 10 6 20c-.3 3 .3 5.6 1.4 7.6l2.2-1.5C8.8 24.5 8.4 22.6 8.6 20 9.4 12 15 7 26 7c0 0-1 5-5 9-3.2 3.2-7.4 4.3-10.6 6.6l-1.8 5.2 2.6.9 1.2-3.5c2.9-2 6.9-3.1 10.1-6.3C27.9 13.9 28 7.4 26 4z"/>
+    </svg>
+    <div>
+      <h1>Sweet Diagnosis</h1>
+      <p class="tagline" data-i18n="tagline">Sugarcane leaf disease detection · 5-model CNN comparison</p>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    <div class="lang-toggle" role="group" aria-label="Language">
+      <button class="lang-btn is-active" data-lang="en" type="button">EN</button>
+      <button class="lang-btn" data-lang="fil" type="button">FIL</button>
+    </div>
+    <span id="serverStatus" class="status-pill status-pill--wait">
+      <span class="dot"></span><span data-i18n="connecting">Connecting…</span>
+    </span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ================= LEFT: input ================= -->
+  <section class="panel panel--input">
+    <h2 class="panel-title" data-i18n="leafImage">Leaf image</h2>
+
+    <div id="dropZone" class="dropzone" tabindex="0" role="button"
+         aria-label="Upload a leaf image">
+      <div id="dropPrompt" class="drop-prompt">
+        <svg viewBox="0 0 24 24" class="drop-icon" aria-hidden="true">
+          <path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <p class="drop-main" data-i18n="dropHere">Drop a leaf photo here</p>
+        <p class="drop-sub" data-i18n="dropSub">or click to browse · JPG, PNG · max 16 MB</p>
+      </div>
+      <img id="preview" class="preview" alt="Selected leaf" hidden>
+      <video id="camera" class="preview" playsinline hidden></video>
+      <canvas id="canvas" hidden></canvas>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*" hidden>
+
+    <div class="btn-row">
+      <button type="button" id="browseBtn" class="btn btn--ghost">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 6h5l2 2h9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/></svg>
+        <span data-i18n="choose">Choose image</span>
+      </button>
+      <button type="button" id="cameraBtn" class="btn btn--ghost">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M3 7h4l2-2h6l2 2h4v12H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        <span data-i18n="camera">Use camera</span>
+      </button>
+      <button type="button" id="captureBtn" class="btn btn--ghost" hidden>
+        <span data-i18n="capture">Capture</span>
+      </button>
+      <button type="button" id="clearBtn" class="btn btn--ghost" hidden>
+        <span data-i18n="clear">Clear</span>
+      </button>
+    </div>
+
+    <div class="field">
+      <label for="modelSelect" data-i18n="model">Model</label>
+      <select id="modelSelect"></select>
+      <p id="modelNote" class="field-note"></p>
+    </div>
+
+    <div class="btn-row btn-row--actions">
+      <button type="button" id="analyzeBtn" class="btn btn--primary" disabled>
+        <span data-i18n="analyze">Analyze leaf</span>
+      </button>
+      <button type="button" id="compareBtn" class="btn btn--secondary" disabled>
+        <span data-i18n="compareAll">Compare all models</span>
+      </button>
+    </div>
+
+    <p class="hint" data-i18n="hint">
+      Tip: fill the frame with a single leaf, in even daylight, against a plain background.
+    </p>
+  </section>
+
+  <!-- ================= RIGHT: results ================= -->
+  <section class="panel panel--result">
+    <h2 class="panel-title" data-i18n="result">Result</h2>
+
+    <div id="emptyState" class="empty">
+      <svg viewBox="0 0 24 24" class="empty-icon" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+      </svg>
+      <p data-i18n="emptyMain">No scan yet</p>
+      <p class="empty-sub" data-i18n="emptySub">Choose a leaf photo and press Analyze.</p>
+    </div>
+
+    <div id="loading" class="loading" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loadingText" data-i18n="working">Working…</p>
+      <p class="loading-sub" data-i18n="firstLoadNote">
+        The first run of a model takes a few seconds while its weights load.
+      </p>
+    </div>
+
+    <div id="errorBox" class="error-box" hidden>
+      <strong data-i18n="somethingWrong">Something went wrong</strong>
+      <p id="errorText"></p>
+    </div>
+
+    <!-- single-model result -->
+    <div id="singleResult" hidden>
+      <div id="resultCard" class="result-card">
+        <div class="result-head">
+          <div>
+            <p class="result-label" data-i18n="detected">Detected</p>
+            <h3 id="predClass" class="result-class">—</h3>
+            <p id="predModel" class="result-model"></p>
+          </div>
+          <div class="confidence-ring">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-bg" cx="60" cy="60" r="52"/>
+              <circle id="ringFill" class="ring-fill" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="ring-text"><span id="confValue">0</span><small>%</small></div>
+          </div>
+        </div>
+
+        <div id="lowConfWarn" class="warn" hidden>
+          <strong data-i18n="unclear">Unclear result.</strong>
+          <span data-i18n="unclearSub">Confidence is below the threshold — try a clearer, closer photo of one leaf.</span>
+        </div>
+
+        <div class="breakdown">
+          <p class="sub-title" data-i18n="topMatches">Top matches</p>
+          <ul id="topK" class="bars"></ul>
+        </div>
+
+        <p class="timing" id="timing"></p>
+      </div>
+
+      <div id="infoCard" class="info-card">
+        <h4 id="infoTitle"></h4>
+        <p id="infoSummary" class="info-summary"></p>
+        <div class="info-cols">
+          <div>
+            <p class="sub-title" data-i18n="lookFor">What to look for</p>
+            <ul id="infoSymptoms" class="tick-list"></ul>
+          </div>
+          <div>
+            <p class="sub-title" data-i18n="whatToDo">What to do next</p>
+            <ul id="infoActions" class="tick-list"></ul>
+          </div>
+        </div>
+        <p id="infoDisclaimer" class="disclaimer"></p>
+      </div>
+    </div>
+
+    <!-- compare-all result -->
+    <div id="compareResult" hidden>
+      <div id="agreementBanner" class="agreement"></div>
+      <div class="table-wrap">
+        <table class="cmp">
+          <thead>
+            <tr>
+              <th data-i18n="thModel">Model</th>
+              <th data-i18n="thPrediction">Prediction</th>
+              <th data-i18n="thConfidence">Confidence</th>
+              <th data-i18n="thTime">Time</th>
+            </tr>
+          </thead>
+          <tbody id="cmpBody"></tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button type="button" id="exportCmpBtn" class="btn btn--ghost btn--sm">
+          <span data-i18n="exportCsv">Export table (CSV)</span>
+        </button>
+      </div>
+      <div id="compareInfo"></div>
+    </div>
+  </section>
+
+  <!-- ================= history ================= -->
+  <section class="panel panel--history">
+    <div class="panel-head">
+      <h2 class="panel-title" data-i18n="history">Recent scans</h2>
+      <div class="btn-row">
+        <button type="button" id="exportHistBtn" class="btn btn--ghost btn--sm">
+          <span data-i18n="export">Export CSV</span>
+        </button>
+        <button type="button" id="clearHistBtn" class="btn btn--ghost btn--sm">
+          <span data-i18n="clearHistory">Clear</span>
+        </button>
+      </div>
+    </div>
+    <div id="historyStrip" class="history-strip">
+      <p class="empty-sub" data-i18n="noHistory">No scans recorded yet.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <span data-i18n="footer">Sweet Diagnosis · runs fully offline on this computer</span>
+  <span id="deviceInfo" class="footer-meta"></span>
+</footer>
+
+<script src="/static/js/main.js"></script>
+</body>
+</html>
